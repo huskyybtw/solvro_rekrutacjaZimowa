@@ -3,7 +3,7 @@ const router = express.Router();
 const { cocktailSchema, ingredientSchema } = require("../validator");
 const pool = require("../db");
 
-router.get("/", async (req,res) => {
+router.get("/", async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM ingredients");
         return res.json(result.rows);
@@ -30,7 +30,7 @@ router.get("/read/:id", async (req, res) => {
 });
 
 router.post("/create", async (req, res) => {
-
+    // Validate alcohol for JSON parsing
     let alcoholValue;
     if (req.body.alcohol !== undefined) {
         try {
@@ -41,14 +41,15 @@ router.post("/create", async (req, res) => {
         }
     }
 
+    // Validate ingredient
     const ingredient = { 
-        name : req.body.name,
-        description : req.body.description,
+        name: req.body.name,
+        description: req.body.description,
         alcohol: alcoholValue,
     };
 
     const { error: ingredientError, value: ingredientValue } = ingredientSchema.validate(ingredient);
-    if(ingredientError) {
+    if (ingredientError) {
         return res.status(400).json({ error: ingredientError.message });
     }
 
@@ -57,7 +58,7 @@ router.post("/create", async (req, res) => {
         const result = await pool.query(insertQuery, [ingredient.name, ingredient.description, ingredient.alcohol, ingredient.picture]);
         if (result.rowCount === 0) {
             return res.status(400).json({ error: "Failed to create ingredient" });
-        };
+        }
 
         return res.status(200).json({ message: "Ingredient created" });
     } catch (error) {
@@ -67,13 +68,13 @@ router.post("/create", async (req, res) => {
 });
 
 router.put("/update/:id", async (req, res) => {
-
     const id = req.params.id;
     const result = await pool.query("SELECT * FROM ingredients WHERE id = $1", [id]);
     if (result.rows.length === 0) {
         return res.status(400).json({ error: "Incorrect ID" });
     }
 
+    // Validate alcohol for JSON parsing
     let alcoholValue;
     if (req.body.alcohol !== undefined) {
         try {
@@ -84,45 +85,50 @@ router.put("/update/:id", async (req, res) => {
         }
     }
 
+    // Validate ingredient
     const ingredient = { 
-        name : req.body.name,
-        description : req.body.description,
+        name: req.body.name,
+        description: req.body.description,
         alcohol: alcoholValue,
     };
 
-    const {ingredientError, ingredientValue} = ingredientSchema.validate(ingredient);
-    if(ingredientError) {
+    const { error: ingredientError, value: ingredientValue } = ingredientSchema.validate(ingredient);
+    if (ingredientError) {
         return res.status(400).json({ error: ingredientError.message });
     }
-  try {
+
+    // Update ingredient
+    try {
         const updateQuery = "UPDATE ingredients SET name = $1, description = $2, alcohol = $3 WHERE id = $4";
         const updateResult = await pool.query(updateQuery, [ingredient.name, ingredient.description, ingredient.alcohol, id]);
         if (updateResult.rowCount === 0) {
             return res.status(400).json({ error: "Failed to update ingredient" });
-        };
+        }
 
-        try{
+        // Check if ingredient is in any cocktails
+        try {
             const selectQuery = "SELECT * FROM cocktail_ingredients WHERE ingredient_id = $1";
             const selectResult = await pool.query(selectQuery, [id]);
 
+            // If ingredient is in any cocktails, delete it
             if (selectResult.rows.length !== 0) {
                 const deleteQuery = "DELETE FROM cocktail_ingredients WHERE ingredient_id = $1";
                 const deleteResult = await pool.query(deleteQuery, [id]);
 
                 if (deleteResult.rowCount === 0) {
                     return res.status(400).json({ error: "Failed to delete ingredient from cocktail_ingredients" });
-                };
-
-            };} catch (selectError) {
-                console.error(selectError.message);
-                return res.status(400).json({ error: "Failed to retrieve cocktail ingredients" });
+                }
+            }
+        } catch (selectError) {
+            console.error(selectError.message);
+            return res.status(400).json({ error: "Failed to retrieve cocktail ingredients" });
         }
 
-      return res.status(200).json({ message: "Ingredient updated" });
-  } catch (error) {
-      console.error(error.message);
-      return res.status(400).json({ error: "Server Error" });
-  }
+        return res.status(200).json({ message: "Ingredient updated" });
+    } catch (error) {
+        console.error(error.message);
+        return res.status(400).json({ error: "Server Error" });
+    }
 });
 
 router.delete("/delete/:id", async (req, res) => {
@@ -139,21 +145,23 @@ router.delete("/delete/:id", async (req, res) => {
             return res.status(400).json({ error: "Failed to delete ingredient" });
         }
 
-        try{
+        // Check if ingredient is in any cocktails
+        try {
             const selectQuery = "SELECT * FROM cocktail_ingredients WHERE ingredient_id = $1";
             const selectResult = await pool.query(selectQuery, [id]);
 
+            // If ingredient is in any cocktails, delete it
             if (selectResult.rows.length !== 0) {
                 const deleteQuery = "DELETE FROM cocktail_ingredients WHERE ingredient_id = $1";
                 const deleteResult = await pool.query(deleteQuery, [id]);
 
                 if (deleteResult.rowCount === 0) {
                     return res.status(400).json({ error: "Failed to delete ingredient from cocktail_ingredients" });
-                };
-                
-            };} catch (selectError) {
-                console.error(selectError.message);
-                return res.status(400).json({ error: "Failed to retrieve cocktail ingredients" });
+                }
+            }
+        } catch (selectError) {
+            console.error(selectError.message);
+            return res.status(400).json({ error: "Failed to retrieve cocktail ingredients" });
         }
 
         return res.status(200).json({ message: "Ingredient deleted" });
@@ -162,4 +170,5 @@ router.delete("/delete/:id", async (req, res) => {
         return res.status(400).json({ error: "Server Error" });
     }
 });
+
 module.exports = router;

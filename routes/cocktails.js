@@ -3,11 +3,12 @@ const router = express.Router();
 const { cocktailSchema, ingredientSchema } = require("../validator");
 const pool = require("../db");
 
-router.get("/", async (req,res) => {
+router.get("/", async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM cocktails");
         let cocktails = result.rows;
 
+        // Merge ingredients with cocktails
         cocktails = await Promise.all(cocktails.map(async (cocktail) => {
             const ingredientsResult = await pool.query("SELECT ingredient_id, amount FROM cocktail_ingredients WHERE cocktail_id = $1", [cocktail.id]);
             const ingredients = ingredientsResult.rows;
@@ -27,6 +28,7 @@ router.get("/read/:id", async (req, res) => {
         const result = await pool.query("SELECT * FROM cocktails WHERE id = $1", [id]);
         let cocktails = result.rows;
 
+        // Merge ingredients with cocktails
         cocktails = await Promise.all(cocktails.map(async (cocktail) => {
             const ingredientsResult = await pool.query("SELECT ingredient_id, amount FROM cocktail_ingredients WHERE cocktail_id = $1", [cocktail.id]);
             const ingredients = ingredientsResult.rows;
@@ -45,27 +47,26 @@ router.get("/read/:id", async (req, res) => {
 });
 
 router.post("/create", async (req, res) => {
-
-    // VALIDATE REQUEST BODY
+    // Validate request body
     const category = req.body.category;
-    if(category === undefined) {
+    if (category === undefined) {
         return res.status(400).json({ error: "Category is required" });
     }
-    // VALIDATE CATEGORY
+
+    // Find category ID
     const categoryQuery = "SELECT id FROM categories WHERE type = $1";
     const categoryResult = await pool.query(categoryQuery, [category]);
     if (categoryResult.rows.length === 0) {
         return res.status(400).json({ error: `Incorrect category = ${req.body.category}` });
     }
 
-    // COCKTAIL OBJECT
     const cocktail = {
         name: req.body.name,
         instruction: req.body.instruction,
         category: categoryResult.rows[0].id
     };
 
-    // INGREDIENT LIST
+    // Ingredient list
     const ingredients = [];
     for (let i = 0; i < Object.keys(req.body).length; i++) {
         const ingredientId = parseInt(req.body[`ingredient${i}`]);
@@ -75,17 +76,17 @@ router.post("/create", async (req, res) => {
         }
     }
 
-    if(ingredients.length === 0) {
+    if (ingredients.length === 0) {
         return res.status(400).json({ error: "Ingredients are required" });
     }
 
-    // VALIDATE COCKTAIL
+    // Validate cocktail
     const { error: cocktailError, value: cocktailData } = cocktailSchema.validate(cocktail);
     if (cocktailError) {
         return res.status(400).json({ error: cocktailError.details[0].message });
     }
 
-    // VALIDATE INGREDIENT LIST
+    // Validate ingredient list
     const idQuery = "SELECT name FROM ingredients WHERE id = $1";
     for (const ingredient of ingredients) {
         const ingredientNameResult = await pool.query(idQuery, [ingredient.id]);
@@ -94,8 +95,8 @@ router.post("/create", async (req, res) => {
         }
     }
 
+    // Insert into cocktails and cocktail with ingredients and amounts
     try {
-        // INSERT COCKTAIL
         const cocktailQuery = "INSERT INTO cocktails (name, instruction, category) VALUES ($1, $2, $3) RETURNING id";
         const cocktailResult = await pool.query(cocktailQuery, [
             cocktail.name,
@@ -104,7 +105,6 @@ router.post("/create", async (req, res) => {
         ]);
         const cocktailId = cocktailResult.rows[0].id;
 
-        // INSERT COCKTAIL_INGREDIENT
         const ingredientQuery = "INSERT INTO cocktail_ingredients (cocktail_id, ingredient_id, amount) VALUES ($1, $2, $3)";
         await Promise.all(ingredients.map(async (ingredient) => {
             await pool.query(ingredientQuery, [cocktailId, ingredient.id, ingredient.amount]);
@@ -123,6 +123,7 @@ router.put("/update/:id", async (req, res) => {
         return res.status(400).json({ error: "Incorrect ID" });
     }
 
+    // Find category ID
     const categoryQuery = "SELECT id FROM categories WHERE type = $1";
     const categoryResult = await pool.query(categoryQuery, [req.body.category]);
     if (categoryResult.rows.length === 0) {
@@ -135,6 +136,7 @@ router.put("/update/:id", async (req, res) => {
         category: categoryResult.rows[0].id
     };
 
+    // Validate cocktail
     const { error: cocktailError, value: cocktailData } = cocktailSchema.validate(cocktail);
     if (cocktailError) {
         return res.status(400).json({ error: cocktailError.details[0].message });
@@ -146,7 +148,7 @@ router.put("/update/:id", async (req, res) => {
         return res.status(400).json({ error: "Failed to update cocktail" });
     }
 
-    // INGREDIENT LIST
+    // Ingredient list
     const ingredients = [];
     for (let i = 0; i < Object.keys(req.body).length; i++) {
         const ingredientId = parseInt(req.body[`ingredient${i}`]);
@@ -156,10 +158,11 @@ router.put("/update/:id", async (req, res) => {
         }
     }
 
-    if(ingredients.length === 0) {
+    if (ingredients.length === 0) {
         return res.status(400).json({ error: "Ingredients are required" });
     }
 
+    // Validate ingredient list
     const idQuery = "SELECT name FROM ingredients WHERE id = $1";
     for (const ingredient of ingredients) {
         const ingredientNameResult = await pool.query(idQuery, [ingredient.id]);
@@ -168,6 +171,7 @@ router.put("/update/:id", async (req, res) => {
         }
     }
 
+    // Delete old ingredients and insert new ones
     const updateIngredientsQuery1 = "DELETE FROM cocktail_ingredients WHERE cocktail_id = $1";
     await pool.query(updateIngredientsQuery1, [id]);
 
